@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pi High Score Challenge</title>
     <style>
-        /* Modern Color Scheme and Styling */
         :root {
             --primary: #FFA726;
             --secondary: #4FC3F7;
@@ -26,8 +25,8 @@
             padding: 1rem;
             background: rgba(0, 0, 0, 0.4);
             backdrop-filter: blur(5px);
-            position: relative;
             border-bottom: 2px solid var(--primary);
+            text-align: center;
         }
 
         canvas {
@@ -60,13 +59,9 @@
             min-width: 120px;
         }
 
-        .game-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(255,167,38,0.4);
-        }
-
-        .game-btn:active {
-            transform: translateY(0);
+        .game-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
 
         #mobileControls {
@@ -104,15 +99,6 @@
             }
         }
 
-        /* Particle Effects */
-        .particle {
-            position: absolute;
-            pointer-events: none;
-            background: var(--primary);
-            border-radius: 50%;
-        }
-
-        /* Improved Game Over Screen */
         .game-over {
             position: fixed;
             top: 50%;
@@ -125,6 +111,7 @@
             backdrop-filter: blur(10px);
             border: 2px solid var(--primary);
             box-shadow: 0 0 30px rgba(255,167,38,0.2);
+            z-index: 1000;
         }
     </style>
 </head>
@@ -147,11 +134,11 @@
     </div>
 
     <script>
-        // Improved Mobile-Friendly Game Setup
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        
-        // Responsive Canvas Setup
+        let animationFrameId;
+
+        // Responsive setup
         function resizeCanvas() {
             canvas.width = Math.min(window.innerWidth - 40, 800);
             canvas.height = canvas.width * 0.5;
@@ -159,26 +146,32 @@
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
 
-        // Enhanced Game Settings
+        // Game constants
         const GRAVITY = 0.7;
         const JUMP_STRENGTH = -14;
         const GROUND_HEIGHT = 60;
-        const PARTICLE_COUNT = 10;
-        let gameSpeed = 7;
-        
-        // Modern Player Design
-        const player = {
+        const OBSTACLE_GAP = 150;
+        const INITIAL_SPEED = 7;
+
+        // Game state
+        let gameSpeed = INITIAL_SPEED;
+        let player = {
             x: 50,
             y: canvas.height - GROUND_HEIGHT - 60,
             width: 40,
             height: 60,
             yVelocity: 0,
             isJumping: false,
-            lives: 1,
             color: '#FFA726'
         };
 
-        // Obstacle Design Improvements
+        let obstacles = [];
+        let score = 0;
+        let highScore = localStorage.getItem("piHighScore") || 0;
+        let gameOver = false;
+        let gameStarted = false;
+        let frameCount = 0;
+
         class Obstacle {
             constructor() {
                 this.width = 30 + Math.random() * 20;
@@ -189,98 +182,150 @@
             }
         }
 
-        let obstacles = [];
-        let score = 0;
-        let highScore = localStorage.getItem("piHighScore") || 0;
-        let gameOver = false;
-        let gameStarted = false;
-
-        // Touch and Click Events
-        const startGame = () => {
-            if (!gameStarted) {
-                gameStarted = true;
-                document.getElementById('startBtn').disabled = true;
-                gameLoop();
-            }
-        };
-
-        document.getElementById('startBtn').addEventListener('click', startGame);
-        document.getElementById('jumpBtn').addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            if (!player.isJumping && gameStarted) {
+        // Event handlers
+        function handleJump() {
+            if (!player.isJumping && gameStarted && !gameOver) {
                 player.yVelocity = JUMP_STRENGTH;
                 player.isJumping = true;
-                createParticles(player.x + player.width/2, player.y);
-            }
-        });
-
-        // Particle Effects
-        function createParticles(x, y) {
-            for (let i = 0; i < PARTICLE_COUNT; i++) {
-                const particle = document.createElement('div');
-                particle.className = 'particle';
-                Object.assign(particle.style, {
-                    left: x + 'px',
-                    top: y + 'px',
-                    width: '6px',
-                    height: '6px',
-                    opacity: 1
-                });
-                document.body.appendChild(particle);
-                
-                const angle = (Math.PI * 2 * i) / PARTICLE_COUNT;
-                const velocity = {x: Math.cos(angle) * 5, y: Math.sin(angle) * 5};
-                
-                requestAnimationFrame(() => {
-                    particle.style.transform = `translate(${velocity.x * 20}px, ${velocity.y * 20}px)`;
-                    particle.style.opacity = 0;
-                    setTimeout(() => particle.remove(), 500);
-                });
             }
         }
 
-        // Enhanced Drawing Functions
-        function drawPlayer() {
+        // Input handling
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') handleJump();
+            if (e.code === 'Enter' && gameOver) resetGame();
+        });
+
+        document.getElementById('jumpBtn').addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleJump();
+        });
+
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('restartBtn').addEventListener('click', resetGame);
+        document.getElementById('restartMobileBtn').addEventListener('click', resetGame);
+
+        function startGame() {
+            if (!gameStarted) {
+                gameStarted = true;
+                gameOver = false;
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('restartBtn').disabled = false;
+                resetGame();
+            }
+        }
+
+        function resetGame() {
+            cancelAnimationFrame(animationFrameId);
+            player.y = canvas.height - GROUND_HEIGHT - player.height;
+            player.yVelocity = 0;
+            player.isJumping = false;
+            obstacles = [];
+            score = 0;
+            gameOver = false;
+            gameSpeed = INITIAL_SPEED;
+            frameCount = 0;
+            gameLoop();
+        }
+
+        function update() {
+            frameCount++;
+            score += 0.1;
+
+            // Update high score
+            if (score > highScore) {
+                highScore = Math.floor(score);
+                localStorage.setItem("piHighScore", highScore);
+            }
+
+            // Player physics
+            player.yVelocity += GRAVITY;
+            player.y += player.yVelocity;
+
+            // Ground collision
+            if (player.y + player.height >= canvas.height - GROUND_HEIGHT) {
+                player.y = canvas.height - GROUND_HEIGHT - player.height;
+                player.yVelocity = 0;
+                player.isJumping = false;
+            }
+
+            // Obstacle generation
+            if (frameCount % OBSTACLE_GAP === 0) {
+                obstacles.push(new Obstacle());
+            }
+
+            // Update obstacles
+            obstacles.forEach(obs => obs.x -= gameSpeed);
+            obstacles = obstacles.filter(obs => obs.x + obs.width > 0);
+
+            // Collision detection
+            obstacles.forEach(obs => {
+                if (
+                    player.x < obs.x + obs.width &&
+                    player.x + player.width > obs.x &&
+                    player.y < obs.y + obs.height &&
+                    player.y + player.height > obs.y
+                ) {
+                    gameOver = true;
+                }
+            });
+
+            // Gradually increase difficulty
+            gameSpeed += 0.002;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw ground
+            ctx.fillStyle = '#4e342e';
+            ctx.fillRect(0, canvas.height - GROUND_HEIGHT, canvas.width, GROUND_HEIGHT);
+
+            // Draw player
             ctx.beginPath();
             ctx.roundRect(player.x, player.y, player.width, player.height, 10);
             ctx.fillStyle = player.color;
             ctx.fill();
-            
-            // Player shadow
-            ctx.fillStyle = 'rgba(0,0,0,0.2)';
-            ctx.fillRect(player.x + 5, player.y + 5, player.width, player.height);
+
+            // Draw obstacles
+            obstacles.forEach(obs => {
+                ctx.beginPath();
+                ctx.roundRect(obs.x, obs.y, obs.width, obs.height, 5);
+                ctx.fillStyle = obs.color;
+                ctx.fill();
+            });
+
+            // Draw UI
+            ctx.fillStyle = 'white';
+            ctx.font = '20px Arial';
+            ctx.fillText(`Score: ${Math.floor(score)}`, 20, 30);
+            ctx.fillText(`High Score: ${Math.floor(highScore)}`, 20, 60);
         }
 
-        function drawObstacle(obs) {
-            ctx.beginPath();
-            ctx.roundRect(obs.x, obs.y, obs.width, obs.height, 5);
-            ctx.fillStyle = obs.color;
-            ctx.fill();
-            
-            // Obstacle glow
-            ctx.shadowColor = obs.color;
-            ctx.shadowBlur = 20;
-            ctx.fill();
-            ctx.shadowBlur = 0;
+        function showGameOver() {
+            const overlay = document.createElement('div');
+            overlay.className = 'game-over';
+            overlay.innerHTML = `
+                <h2>Game Over!</h2>
+                <p>Final Score: ${Math.floor(score)}</p>
+                <button class="game-btn" onclick="resetGame()">Play Again</button>
+            `;
+            document.body.appendChild(overlay);
         }
 
-        // Mobile-Friendly Game Loop
         function gameLoop() {
             if (gameOver) {
                 showGameOver();
                 return;
             }
-            
+
             update();
             draw();
-            requestAnimationFrame(gameLoop);
+            animationFrameId = requestAnimationFrame(gameLoop);
         }
 
-        // Rest of game logic remains similar but uses new drawing functions
-        // Add smooth animations and mobile optimizations as needed
-
-        // Initial Start
-        document.getElementById('startBtn').click();
+        // Initial canvas setup
+        draw();
     </script>
 </body>
 </html>
