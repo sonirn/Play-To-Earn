@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Pi High Score Challenge</title>
+    <style>
+      /* Reset and overall page style */
+      body {
+        margin: 0;
+        background: #1e1e1e;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        color: #fff;
+        text-align: center;
+      }
+      header {
+        padding: 10px;
+        background: #212121;
+        border-bottom: 2px solid #424242;
+      }
+      canvas {
+        display: block;
+        background: #333;
+        margin: 20px auto;
+        border: 2px solid #fff;
+      }
+      #inAppContainer {
+        margin: 10px auto;
+      }
+      button {
+        background: #ff9800;
+        border: none;
+        padding: 10px 20px;
+        font-size: 16px;
+        color: #fff;
+        cursor: pointer;
+        border-radius: 4px;
+      }
+      button:hover {
+        background: #fb8c00;
+      }
+      footer {
+        margin: 20px auto;
+        font-size: 14px;
+        color: #bbb;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Pi High Score Challenge</h1>
+      <p>Beat your best score and get ready for future Pi rewards! (Coming soon: top 10 players win 1,000 Pi coins per day!)</p>
+    </header>
+
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    
+    <div id="inAppContainer">
+      <!-- In-app purchases (teaser button) -->
+      <button id="buyExtraLifeBtn" disabled>Buy Extra Life (Coming Soon!)</button>
+    </div>
+    
+    <footer>
+      <p>Future Update: This game will soon convert into a play-to-earn platform on the Pi ecosystem. Stay tuned!</p>
+      <p>High scores are locally saved. Always challenge yourself to hit the top 10!</p>
+    </footer>
+    
+    <script>
+      // ------------- GAME CODE FOR "PI HIGH SCORE CHALLENGE" ----------------
+      // Get Canvas & context
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+
+      // Game settings
+      const GRAVITY = 0.6;
+      const JUMP_STRENGTH = -12;
+      const GROUND_HEIGHT = 80;
+      const OBSTACLE_WIDTH = 30;
+      const OBSTACLE_GAP_MIN = 120; // Min horizontal gap between obstacles
+      const OBSTACLE_GAP_MAX = 200; // Max gap 
+      let gameSpeed = 6;
+      
+      // Player settings
+      const player = {
+        x: 50,
+        y: canvas.height - GROUND_HEIGHT - 50,
+        width: 40,
+        height: 50,
+        yVelocity: 0,
+        isJumping: false,
+        lives: 1, // In future, extra lives might be purchased via in-app purchase.
+      };
+
+      let obstacles = [];             // Array to store upcoming obstacles
+      let frameCount = 0;             // Frame counter to time obstacle generation
+      let score = 0;
+      let highScore = localStorage.getItem("piHighScore") || 0;
+      let gameOver = false;
+      
+      // Listen for key events (spacebar for jump)
+      document.addEventListener('keydown', (e) => {
+        if (e.code === "Space" && !gameOver) {
+          if (!player.isJumping) {
+            player.yVelocity = JUMP_STRENGTH;
+            player.isJumping = true;
+          }
+        }
+        // Allow enter to restart after game over.
+        if(e.code === "Enter" && gameOver) {
+          resetGame();
+        }
+      });
+      
+      // Main game loop
+      function gameLoop() {
+        update();
+        draw();
+        if (!gameOver) {
+          requestAnimationFrame(gameLoop);
+        } else {
+          drawGameOver();
+        }
+      }
+      
+      // Update game entities and physics
+      function update() {
+        frameCount++;
+        score += 0.1; // Increase score gradually
+        
+        // Update high score
+        if (score > highScore) {
+          highScore = Math.floor(score);
+          localStorage.setItem("piHighScore", highScore);
+        }
+        
+        // Update player physics
+        player.yVelocity += GRAVITY;
+        player.y += player.yVelocity;
+        if (player.y + player.height >= canvas.height - GROUND_HEIGHT) {
+          player.y = canvas.height - GROUND_HEIGHT - player.height;
+          player.yVelocity = 0;
+          player.isJumping = false;
+        }
+        
+        // Add obstacles at intervals
+        if (frameCount % Math.floor(Math.random() * (OBSTACLE_GAP_MAX - OBSTACLE_GAP_MIN) + OBSTACLE_GAP_MIN) === 0) {
+          // New obstacle appears at right edge
+          obstacles.push({
+            x: canvas.width,
+            y: canvas.height - GROUND_HEIGHT - OBSTACLE_WIDTH,
+            width: OBSTACLE_WIDTH,
+            height: OBSTACLE_WIDTH
+          });
+        }
+        
+        // Update obstacles: move left
+        obstacles.forEach((obs) => {
+          obs.x -= gameSpeed;
+        });
+        
+        // Remove offscreen obstacles
+        obstacles = obstacles.filter(obs => obs.x + obs.width > 0);
+        
+        // Check collision between player and obstacles
+        obstacles.forEach((obs) => {
+          if (
+            player.x < obs.x + obs.width &&
+            player.x + player.width > obs.x &&
+            player.y < obs.y + obs.height &&
+            player.y + player.height > obs.y
+          ) {
+            // Collision detected
+            // If there are extra lives, subtract one and continue (in future via in-app purchase).
+            if (player.lives > 0) {
+              player.lives--;
+              // For this demo, collision ends the game.
+              gameOver = true;
+            } else {
+              gameOver = true;
+            }
+          }
+        });
+        
+      }
+      
+      // Draw game scene
+      function draw() {
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw background (could add gradients or images for extra flair)
+        ctx.fillStyle = "#263238";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw ground
+        ctx.fillStyle = "#4e342e";
+        ctx.fillRect(0, canvas.height - GROUND_HEIGHT, canvas.width, GROUND_HEIGHT);
+        
+        // Draw player (a simple rectangle)
+        ctx.fillStyle = "#ffeb3b";
+        ctx.fillRect(player.x, player.y, player.width, player.height);
+        
+        // Draw obstacles
+        ctx.fillStyle = "#e91e63";
+        obstacles.forEach((obs) => {
+          ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+        });
+        
+        // Draw scores and lives
+        ctx.fillStyle = "#fff";
+        ctx.font = "20px sans-serif";
+        ctx.fillText("Score: " + Math.floor(score), 10, 30);
+        ctx.fillText("High Score: " + highScore, 10, 60);
+        ctx.fillText("Lives: " + player.lives, 10, 90);
+      }
+      
+      // Display game over text
+      function drawGameOver() {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#fff";
+        ctx.font = "40px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("Game Over", canvas.width / 2, canvas.height / 2 - 20);
+        ctx.font = "24px sans-serif";
+        ctx.fillText("Press Enter to Restart", canvas.width / 2, canvas.height / 2 + 20);
+      }
+      
+      // Reset game state after Game Over
+      function resetGame() {
+        player.y = canvas.height - GROUND_HEIGHT - player.height;
+        player.yVelocity = 0;
+        player.isJumping = false;
+        obstacles = [];
+        score = 0;
+        gameOver = false;
+        frameCount = 0;
+        requestAnimationFrame(gameLoop);
+      }
+      
+      // Start the game loop
+      gameLoop();
+      
+      // --------- FUTURE: In-app Purchases (Teaser) -----------
+      // This is only a placeholder button. In a future update (on the Pi ecosystem),
+      // this button will allow you to purchase upgrades such as extra lives using Pi coins.
+      document.getElementById('buyExtraLifeBtn').addEventListener('click', () => {
+        alert("In-app purchases coming soon on the Pi ecosystem! Stay tuned for Play-to-Earn rewards for top scorers.");
+      });
+    </script>
+  </body>
+</html>
