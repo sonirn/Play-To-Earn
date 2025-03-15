@@ -1,330 +1,158 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pi Jump Challenge</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pi Speed Dash - Fixed Version</title>
     <style>
-        :root {
-            --primary: #FFA726;
-            --secondary: #4FC3F7;
-            --background: #2D2D2D;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
-            background: var(--background);
-            font-family: 'Arial Rounded MT Bold', Arial;
-            color: white;
-            touch-action: manipulation;
+            background: #1a1a2e;
+            margin: 0;
             overflow: hidden;
+            touch-action: manipulation;
         }
-
         #gameContainer {
-            position: fixed;
+            position: relative;
             width: 100vw;
             height: 100vh;
-            overflow: hidden;
         }
-
-        canvas {
-            width: 100%;
-            height: 100%;
+        #gameCanvas {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            max-width: 90%;
+            max-height: 90vh;
+            border: 3px solid #e94560;
+            border-radius: 10px;
         }
-
         #controls {
             position: fixed;
-            bottom: 5vh;
+            bottom: 20px;
             width: 100%;
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            z-index: 100;
-        }
-
-        .control-btn {
-            width: 15vw;
-            height: 15vw;
-            min-width: 70px;
-            min-height: 70px;
-            border-radius: 50%;
-            background: rgba(255, 167, 38, 0.9);
-            border: 2px solid white;
-            color: white;
-            font-size: 1.5em;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        #startScreen {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
             text-align: center;
-            z-index: 200;
         }
-
-        #startBtn {
+        button {
             padding: 15px 30px;
-            font-size: 1.2em;
-            background: var(--primary);
-            border: none;
-            border-radius: 30px;
+            font-size: 18px;
+            background: #2d4263;
             color: white;
-            cursor: pointer;
-        }
-
-        .game-over {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.9);
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            z-index: 300;
-        }
-
-        .score-display {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            font-size: 1.2em;
-            z-index: 100;
+            border: none;
+            border-radius: 8px;
+            margin: 10px;
+            touch-action: manipulation;
         }
     </style>
 </head>
 <body>
     <div id="gameContainer">
         <canvas id="gameCanvas"></canvas>
-        <div id="startScreen">
-            <button id="startBtn">Start Game</button>
-        </div>
-        <div class="score-display">
-            <div>Score: <span id="currentScore">0</span></div>
-            <div>High Score: <span id="highScore">0</span></div>
-        </div>
-        <div id="controls" style="display: none;">
-            <div class="control-btn" id="jumpBtn">↑</div>
-        </div>
+    </div>
+    <div id="controls">
+        <button onclick="jump()">JUMP</button>
     </div>
 
     <script>
+        // Screen size adjustment
         const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        let aspectRatio = 9/16;
-        let baseHeight = window.innerHeight;
-
-        // Game settings
-        const config = {
-            GRAVITY: 0.8,
-            JUMP_FORCE: -22,  // Increased jump force
-            PLAYER_SIZE: 0.08, // % of screen height
-            GROUND_HEIGHT: 0.12, // % of screen height
-            OBSTACLE: {
-                MIN_WIDTH: 0.15, // % of screen width
-                MAX_WIDTH: 0.25,
-                MIN_GAP: 0.4,   // % of screen width
-                MAX_GAP: 0.6,
-                MIN_HEIGHT: 0.15, // % of screen height
-                MAX_HEIGHT: 0.35,
-                SPAWN_RATE: 120 // frames between obstacles
-            },
-            BASE_SPEED: 8
-        };
-
-        // Game state
-        let state = {
-            player: { y: 0, vy: 0, isJumping: false },
-            obstacles: [],
-            score: 0,
-            highScore: parseInt(localStorage.getItem('piHighScore')) || 0,
-            gameOver: false,
-            lastSpawn: 0,
-            speed: config.BASE_SPEED
-        };
-
-        // Mobile-first initialization
-        function init() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            aspectRatio = canvas.width / canvas.height;
-            baseHeight = canvas.height;
-            
-            state.player.size = canvas.height * config.PLAYER_SIZE;
-            state.player.x = canvas.width * 0.1;
-            state.player.y = canvas.height - (canvas.height * config.GROUND_HEIGHT) - state.player.size;
-            
-            document.getElementById('highScore').textContent = state.highScore;
+        const container = document.getElementById('gameContainer');
+        let playerY = 0;
+        let velocity = 0;
+        let obstacles = [];
+        let score = 0;
+        let highScore = localStorage.getItem('highScore') || 0;
+        
+        function resizeCanvas() {
+            canvas.width = Math.min(400, container.clientWidth - 40);
+            canvas.height = Math.min(600, container.clientHeight - 40);
+            playerY = canvas.height / 2;
         }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
 
+        // Game parameters
+        const GRAVITY = 0.5;
+        const JUMP_FORCE = -12;
+        const OBSTACLE_GAP = 150;
+        const MIN_GAP = 80;
+        
         function jump() {
-            if (!state.player.isJumping && !state.gameOver) {
-                state.player.vy = config.JUMP_FORCE;
-                state.player.isJumping = true;
-            }
+            if (velocity > JUMP_FORCE) velocity = JUMP_FORCE;
         }
 
-        function spawnObstacle() {
-            const minHeight = canvas.height * config.OBSTACLE.MIN_HEIGHT;
-            const maxHeight = canvas.height * config.OBSTACLE.MAX_HEIGHT;
-            const width = canvas.width * (config.OBSTACLE.MIN_WIDTH + 
-                         Math.random() * (config.OBSTACLE.MAX_WIDTH - config.OBSTACLE.MIN_WIDTH));
-            
-            return {
+        function createObstacle() {
+            const gapHeight = Math.random() * (canvas.height - OBSTACLE_GAP - MIN_GAP) + MIN_GAP;
+            obstacles.push({
                 x: canvas.width,
-                width: width,
-                height: minHeight + Math.random() * (maxHeight - minHeight),
-                color: `hsl(${Math.random() * 360}, 70%, 50%)`
-            };
+                topHeight: gapHeight,
+                bottomY: gapHeight + OBSTACLE_GAP,
+                passed: false
+            });
         }
 
         function update() {
-            if (state.gameOver) return;
-
+            const ctx = canvas.getContext('2d');
+            
+            // Clear canvas
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
             // Player physics
-            state.player.vy += config.GRAVITY;
-            state.player.y += state.player.vy;
-
-            // Ground collision
-            const groundY = canvas.height - (canvas.height * config.GROUND_HEIGHT);
-            if (state.player.y + state.player.size > groundY) {
-                state.player.y = groundY - state.player.size;
-                state.player.vy = 0;
-                state.player.isJumping = false;
-            }
-
-            // Obstacle spawning
-            if (performance.now() - state.lastSpawn > config.OBSTACLE.SPAWN_RATE) {
-                state.obstacles.push(spawnObstacle());
-                state.lastSpawn = performance.now();
-            }
-
-            // Update obstacles
-            state.obstacles.forEach(obs => obs.x -= state.speed);
-            state.obstacles = state.obstacles.filter(obs => obs.x + obs.width > 0);
-
-            // Collision detection
-            state.obstacles.forEach(obs => {
-                if (state.player.x + state.player.size > obs.x &&
-                    state.player.x < obs.x + obs.width &&
-                    state.player.y + state.player.size > canvas.height - 
-                    (canvas.height * config.GROUND_HEIGHT) - obs.height) {
-                    state.gameOver = true;
-                    if (state.score > state.highScore) {
-                        state.highScore = Math.floor(state.score);
-                        localStorage.setItem('piHighScore', state.highScore);
-                        document.getElementById('highScore').textContent = state.highScore;
-                    }
-                    showGameOver();
+            velocity += GRAVITY;
+            playerY += velocity;
+            playerY = Math.max(10, Math.min(canvas.height - 50, playerY));
+            
+            // Draw player
+            ctx.fillStyle = '#e94560';
+            ctx.fillRect(50, playerY, 30, 30);
+            
+            // Obstacle logic
+            if (Math.random() < 0.015) createObstacle();
+            
+            obstacles.forEach((obs, index) => {
+                // Update position
+                obs.x -= 3;
+                
+                // Draw obstacles
+                ctx.fillStyle = '#2d4263';
+                ctx.fillRect(obs.x, 0, 40, obs.topHeight);
+                ctx.fillRect(obs.x, obs.bottomY, 40, canvas.height - obs.bottomY);
+                
+                // Collision detection
+                if (50 < obs.x + 40 && 50 + 30 > obs.x &&
+                    (playerY < obs.topHeight || playerY + 30 > obs.bottomY)) {
+                    gameOver();
                 }
+                
+                // Score counting
+                if (!obs.passed && obs.x < 50) {
+                    obs.passed = true;
+                    score++;
+                    if (score > highScore) {
+                        highScore = score;
+                        localStorage.setItem('highScore', highScore);
+                    }
+                }
+                
+                // Remove off-screen obstacles
+                if (obs.x < -40) obstacles.splice(index, 1);
             });
-
-            // Update score and difficulty
-            state.score += 0.1;
-            state.speed += 0.002;
-            document.getElementById('currentScore').textContent = Math.floor(state.score);
+            
+            requestAnimationFrame(update);
         }
 
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // Draw ground
-            ctx.fillStyle = '#4e342e';
-            const groundHeight = canvas.height * config.GROUND_HEIGHT;
-            ctx.fillRect(0, canvas.height - groundHeight, canvas.width, groundHeight);
-            
-            // Draw player (Pi coin)
-            ctx.beginPath();
-            ctx.arc(
-                state.player.x + state.player.size/2,
-                state.player.y + state.player.size/2,
-                state.player.size/2,
-                0,
-                Math.PI * 2
-            );
-            ctx.fillStyle = '#FFA726';
-            ctx.fill();
-            
-            // Pi symbol
-            ctx.fillStyle = '#000';
-            ctx.font = `${state.player.size * 0.5}px Arial`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(
-                'π',
-                state.player.x + state.player.size/2,
-                state.player.y + state.player.size/2
-            );
-
-            // Draw obstacles
-            state.obstacles.forEach(obs => {
-                ctx.fillStyle = obs.color;
-                ctx.fillRect(
-                    obs.x,
-                    canvas.height - groundHeight - obs.height,
-                    obs.width,
-                    obs.height
-                );
-            });
+        function gameOver() {
+            alert(`Game Over! Score: ${score}\nHigh Score: ${highScore}`);
+            obstacles = [];
+            score = 0;
+            playerY = canvas.height / 2;
+            velocity = 0;
         }
 
-        function showGameOver() {
-            const overlay = document.createElement('div');
-            overlay.className = 'game-over';
-            overlay.innerHTML = `
-                <h2>Game Over!</h2>
-                <p>Score: ${Math.floor(state.score)}</p>
-                <button onclick="window.location.reload()" 
-                        style="padding: 10px 20px;
-                               background: #FFA726;
-                               border: none;
-                               border-radius: 20px;
-                               color: white;
-                               margin-top: 10px;
-                               cursor: pointer;">
-                    Play Again
-                </button>
-            `;
-            document.body.appendChild(overlay);
-        }
-
-        // Event listeners
-        window.addEventListener('resize', init);
-        document.getElementById('startBtn').addEventListener('click', () => {
-            document.getElementById('startScreen').style.display = 'none';
-            document.getElementById('controls').style.display = 'flex';
-            state.gameOver = false;
-            gameLoop();
-        });
-        document.getElementById('jumpBtn').addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            jump();
-        });
-        document.addEventListener('keydown', (e) => {
+        // Start game
+        update();
+        window.addEventListener('keydown', (e) => {
             if (e.code === 'Space') jump();
         });
-
-        // Game loop
-        function gameLoop() {
-            update();
-            draw();
-            if (!state.gameOver) requestAnimationFrame(gameLoop);
-        }
-
-        // Initial setup
-        init();
-        draw();
     </script>
 </body>
 </html>
