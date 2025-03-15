@@ -1,158 +1,261 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pi Speed Dash - Fixed Version</title>
+    <title>Pi Speed Dash - Final Version</title>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
             background: #1a1a2e;
-            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: Arial, sans-serif;
+            color: white;
             overflow: hidden;
             touch-action: manipulation;
         }
+
         #gameContainer {
             position: relative;
-            width: 100vw;
-            height: 100vh;
+            width: 100%;
+            max-width: 400px;
+            height: 70vh;
+            margin: 20px auto;
         }
+
         #gameCanvas {
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
-            max-width: 90%;
-            max-height: 90vh;
+            background: #1a1a2e;
             border: 3px solid #e94560;
             border-radius: 10px;
         }
+
+        #scoreBoard {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 1.5em;
+            z-index: 1;
+        }
+
         #controls {
             position: fixed;
             bottom: 20px;
-            width: 100%;
-            text-align: center;
+            display: flex;
+            gap: 20px;
         }
+
         button {
             padding: 15px 30px;
-            font-size: 18px;
+            font-size: 1.2em;
             background: #2d4263;
             color: white;
             border: none;
             border-radius: 8px;
-            margin: 10px;
+            cursor: pointer;
             touch-action: manipulation;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
         }
     </style>
 </head>
 <body>
     <div id="gameContainer">
+        <div id="scoreBoard">Score: <span id="score">0</span></div>
         <canvas id="gameCanvas"></canvas>
+        <div class="game-over" id="gameOver">
+            <h2>Game Over!</h2>
+            <p>Score: <span id="finalScore">0</span></p>
+            <p>High Score: <span id="highScore">0</span></p>
+            <button onclick="resetGame()">Play Again</button>
+        </div>
     </div>
     <div id="controls">
-        <button onclick="jump()">JUMP</button>
+        <button ontouchstart="jump()" onmousedown="jump()">JUMP</button>
     </div>
 
     <script>
-        // Screen size adjustment
-        const canvas = document.getElementById('gameCanvas');
-        const container = document.getElementById('gameContainer');
-        let playerY = 0;
-        let velocity = 0;
+        // Game Configuration
+        const config = {
+            gravity: 0.8,
+            jumpForce: -15,
+            obstacleSpeed: 5,
+            spawnInterval: 1500, // milliseconds
+            minGap: 200,
+            maxGap: 300,
+            playerSize: 30,
+            obstacleWidth: 40
+        };
+
+        // Game State
+        let canvas, ctx;
+        let player = {
+            y: 0,
+            velocity: 0,
+            isJumping: false
+        };
         let obstacles = [];
         let score = 0;
         let highScore = localStorage.getItem('highScore') || 0;
-        
-        function resizeCanvas() {
-            canvas.width = Math.min(400, container.clientWidth - 40);
-            canvas.height = Math.min(600, container.clientHeight - 40);
-            playerY = canvas.height / 2;
-        }
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
+        let gameLoop;
+        let lastSpawnTime = 0;
 
-        // Game parameters
-        const GRAVITY = 0.5;
-        const JUMP_FORCE = -12;
-        const OBSTACLE_GAP = 150;
-        const MIN_GAP = 80;
-        
-        function jump() {
-            if (velocity > JUMP_FORCE) velocity = JUMP_FORCE;
-        }
-
-        function createObstacle() {
-            const gapHeight = Math.random() * (canvas.height - OBSTACLE_GAP - MIN_GAP) + MIN_GAP;
-            obstacles.push({
-                x: canvas.width,
-                topHeight: gapHeight,
-                bottomY: gapHeight + OBSTACLE_GAP,
-                passed: false
+        // Initialize Game
+        function init() {
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            
+            // Set canvas dimensions
+            const container = document.getElementById('gameContainer');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            
+            player.y = canvas.height / 2 - config.playerSize/2;
+            document.getElementById('highScore').textContent = highScore;
+            
+            // Start game loop
+            gameLoop = requestAnimationFrame(update);
+            
+            // Event listeners
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'Space') jump();
             });
         }
 
-        function update() {
-            const ctx = canvas.getContext('2d');
-            
+        // Game Loop
+        function update(timestamp) {
             // Clear canvas
-            ctx.fillStyle = '#1a1a2e';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // Player physics
-            velocity += GRAVITY;
-            playerY += velocity;
-            playerY = Math.max(10, Math.min(canvas.height - 50, playerY));
+            // Update player
+            player.velocity += config.gravity;
+            player.y += player.velocity;
+            player.y = Math.max(0, Math.min(canvas.height - config.playerSize, player.y));
             
             // Draw player
             ctx.fillStyle = '#e94560';
-            ctx.fillRect(50, playerY, 30, 30);
+            ctx.fillRect(50, player.y, config.playerSize, config.playerSize);
             
-            // Obstacle logic
-            if (Math.random() < 0.015) createObstacle();
+            // Update obstacles
+            updateObstacles(timestamp);
             
-            obstacles.forEach((obs, index) => {
-                // Update position
-                obs.x -= 3;
+            // Check collisions
+            if (checkCollisions()) {
+                endGame();
+                return;
+            }
+            
+            gameLoop = requestAnimationFrame(update);
+        }
+
+        // Obstacle Management
+        function updateObstacles(timestamp) {
+            // Spawn new obstacles
+            if (timestamp - lastSpawnTime > config.spawnInterval) {
+                createObstacle();
+                lastSpawnTime = timestamp;
+            }
+
+            // Update existing obstacles
+            obstacles.forEach((obstacle, index) => {
+                obstacle.x -= config.obstacleSpeed;
                 
-                // Draw obstacles
+                // Draw obstacle
                 ctx.fillStyle = '#2d4263';
-                ctx.fillRect(obs.x, 0, 40, obs.topHeight);
-                ctx.fillRect(obs.x, obs.bottomY, 40, canvas.height - obs.bottomY);
-                
-                // Collision detection
-                if (50 < obs.x + 40 && 50 + 30 > obs.x &&
-                    (playerY < obs.topHeight || playerY + 30 > obs.bottomY)) {
-                    gameOver();
-                }
-                
-                // Score counting
-                if (!obs.passed && obs.x < 50) {
-                    obs.passed = true;
-                    score++;
-                    if (score > highScore) {
-                        highScore = score;
-                        localStorage.setItem('highScore', highScore);
-                    }
-                }
+                ctx.fillRect(obstacle.x, 0, config.obstacleWidth, obstacle.topHeight);
+                ctx.fillRect(obstacle.x, obstacle.bottomY, config.obstacleWidth, canvas.height - obstacle.bottomY);
                 
                 // Remove off-screen obstacles
-                if (obs.x < -40) obstacles.splice(index, 1);
+                if (obstacle.x + config.obstacleWidth < 0) {
+                    obstacles.splice(index, 1);
+                    score++;
+                    document.getElementById('score').textContent = score;
+                }
             });
-            
-            requestAnimationFrame(update);
         }
 
-        function gameOver() {
-            alert(`Game Over! Score: ${score}\nHigh Score: ${highScore}`);
+        function createObstacle() {
+            const gap = Math.random() * (config.maxGap - config.minGap) + config.minGap;
+            const topHeight = Math.random() * (canvas.height - gap - 50) + 20;
+            const bottomY = topHeight + gap;
+            
+            obstacles.push({
+                x: canvas.width,
+                topHeight: topHeight,
+                bottomY: bottomY
+            });
+        }
+
+        // Game Mechanics
+        function jump() {
+            if (!player.isJumping) {
+                player.velocity = config.jumpForce;
+                player.isJumping = true;
+                setTimeout(() => player.isJumping = false, 100);
+            }
+        }
+
+        function checkCollisions() {
+            return obstacles.some(obstacle => {
+                const playerLeft = 50;
+                const playerRight = playerLeft + config.playerSize;
+                const playerTop = player.y;
+                const playerBottom = player.y + config.playerSize;
+                
+                const obstacleLeft = obstacle.x;
+                const obstacleRight = obstacle.x + config.obstacleWidth;
+                
+                // Horizontal collision check
+                if (playerRight < obstacleLeft || playerLeft > obstacleRight) return false;
+                
+                // Vertical collision check
+                return playerTop < obstacle.topHeight || 
+                       playerBottom > obstacle.bottomY;
+            });
+        }
+
+        // Game State Management
+        function endGame() {
+            cancelAnimationFrame(gameLoop);
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('highScore', highScore);
+            }
+            document.getElementById('finalScore').textContent = score;
+            document.getElementById('highScore').textContent = highScore;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        function resetGame() {
             obstacles = [];
             score = 0;
-            playerY = canvas.height / 2;
-            velocity = 0;
+            player.y = canvas.height / 2 - config.playerSize/2;
+            player.velocity = 0;
+            document.getElementById('score').textContent = '0';
+            document.getElementById('gameOver').style.display = 'none';
+            lastSpawnTime = 0;
+            gameLoop = requestAnimationFrame(update);
         }
 
-        // Start game
-        update();
-        window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') jump();
-        });
+        // Start the game
+        init();
     </script>
 </body>
 </html>
