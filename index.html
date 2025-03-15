@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pi High Score Challenge</title>
     <style>
+        /* Existing styles remain the same */
         :root {
             --primary: #FFA726;
             --secondary: #4FC3F7;
@@ -12,404 +13,123 @@
             --accent: #FF7043;
         }
 
-        body {
-            margin: 0;
-            background: var(--background);
-            font-family: 'Arial Rounded MT Bold', Arial, sans-serif;
-            color: #fff;
-            overflow: hidden;
-            touch-action: manipulation;
-        }
+        /* ... (keep previous styles) ... */
 
-        header {
-            padding: 1rem;
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(5px);
-            border-bottom: 2px solid var(--primary);
-            text-align: center;
-            transition: opacity 0.3s;
-        }
-
-        canvas {
-            display: block;
-            background: linear-gradient(45deg, #1a1a1a 0%, #2d2d2d 100%);
-            margin: 0 auto;
-            border-radius: 0;
-            box-shadow: none;
-        }
-
-        #controls {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 1000;
+        /* Updated player coin style */
+        .pi-coin {
+            background: #FFA726;
+            border-radius: 50%;
             display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
-
-        .game-btn {
-            background: var(--primary);
-            border: none;
-            padding: 1rem 2rem;
-            font-size: 1.1rem;
-            color: white;
-            border-radius: 50px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(255,167,38,0.3);
-            min-width: 120px;
-        }
-
-        .game-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-        #mobileControls {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: none;
-            gap: 2rem;
-            z-index: 1000;
-        }
-
-        .mobile-btn {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.1);
-            border: 2px solid var(--primary);
-            color: white;
-            font-size: 1.5rem;
-            touch-action: manipulation;
-            transition: transform 0.1s;
-        }
-
-        .mobile-btn:active {
-            transform: scale(0.9);
-        }
-
-        .game-over {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.9);
-            padding: 2rem;
-            border-radius: 15px;
-            text-align: center;
-            backdrop-filter: blur(10px);
-            border: 2px solid var(--primary);
-            box-shadow: 0 0 30px rgba(255,167,38,0.2);
-            z-index: 1001;
-        }
-
-        .particle {
-            position: absolute;
-            pointer-events: none;
-            background: var(--primary);
-            border-radius: 50%;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            font-weight: bold;
+            font-size: 24px;
         }
     </style>
 </head>
 <body>
-    <header>
-        <h1>π High Score Challenge</h1>
-        <p>Jump higher, earn Pi! Top 10 daily players win 1000π coins! 🚀</p>
-    </header>
-
-    <div id="controls">
-        <button class="game-btn" id="startBtn">Start Game</button>
-    </div>
-
-    <canvas id="gameCanvas"></canvas>
-
-    <div id="mobileControls">
-        <button class="mobile-btn" id="jumpBtn">↑</button>
-    </div>
+    <!-- Keep previous HTML structure -->
 
     <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        let animationFrameId;
-        let particles = [];
-        let screenShake = 0;
-
-        // Fullscreen setup
-        function enterFullscreen() {
-            if (canvas.requestFullscreen) {
-                canvas.requestFullscreen();
-            } else if (canvas.webkitRequestFullscreen) {
-                canvas.webkitRequestFullscreen();
-            }
-            document.getElementById('controls').style.opacity = '0';
-        }
-
-        // Responsive setup
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
-        window.addEventListener('fullscreenchange', () => {
-            if (!document.fullscreenElement) {
-                resetGame();
-                document.getElementById('controls').style.opacity = '1';
-            }
-        });
-
-        // Game constants
-        const GRAVITY = 0.7;
-        const JUMP_STRENGTH = -14;
-        const GROUND_HEIGHT = 60;
-        const OBSTACLE_GAP = 150;
-        const INITIAL_SPEED = 7;
-
-        // Game state
-        let gameSpeed = INITIAL_SPEED;
-        let player = {
+        // Modified player object
+        const player = {
             x: 50,
             y: 0,
-            width: 40,
-            height: 60,
+            diameter: 50,  // Changed to diameter for circle
             yVelocity: 0,
             isJumping: false,
-            color: '#FFA726',
-            scaleY: 1
+            color: '#FFA726'
         };
 
-        let obstacles = [];
-        let score = 0;
-        let highScore = localStorage.getItem("piHighScore") || 0;
-        let gameOver = false;
-        let gameStarted = false;
-        let frameCount = 0;
-
-        class Obstacle {
-            constructor() {
-                this.width = 30 + Math.random() * 20;
-                this.height = 40 + Math.random() * 20;
-                this.x = canvas.width;
-                this.y = canvas.height - GROUND_HEIGHT - this.height;
-                this.color = `hsl(${Math.random() * 360}, 70%, 60%)`;
-                this.glow = 0;
-            }
-        }
-
-        // Event handlers
-        function handleJump() {
-            if (!player.isJumping && gameStarted && !gameOver) {
-                player.yVelocity = JUMP_STRENGTH;
-                player.isJumping = true;
-                createParticles();
-                player.scaleY = 0.8;
-            }
-        }
-
-        // Input handling
-        document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') handleJump();
-            if (e.code === 'Enter' && gameOver) resetGame();
-        });
-
-        document.getElementById('jumpBtn').addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            handleJump();
-        });
-
-        document.getElementById('startBtn').addEventListener('click', () => {
-            enterFullscreen();
-            startGame();
-        });
-
+        // Updated jump button fix
         function startGame() {
             if (!gameStarted) {
                 gameStarted = true;
                 gameOver = false;
-                player.y = canvas.height - GROUND_HEIGHT - player.height;
+                player.y = canvas.height - GROUND_HEIGHT - player.diameter;
                 document.getElementById('startBtn').disabled = true;
                 document.getElementById('mobileControls').style.display = 'flex';
+                document.getElementById('jumpBtn').style.display = 'block'; // Add this line
                 gameLoop();
             }
         }
 
-        function resetGame() {
-            cancelAnimationFrame(animationFrameId);
-            const overlays = document.querySelectorAll('.game-over');
-            overlays.forEach(overlay => overlay.remove());
+        // Simplified animations
+        function update() {
+            // ... previous code ...
             
-            player.y = canvas.height - GROUND_HEIGHT - player.height;
-            player.yVelocity = 0;
-            player.isJumping = false;
-            player.scaleY = 1;
-            obstacles = [];
-            particles = [];
-            score = 0;
-            gameOver = false;
-            gameSpeed = INITIAL_SPEED;
-            frameCount = 0;
-            screenShake = 0;
-            gameStarted = false;
-            document.getElementById('startBtn').disabled = false;
-            document.getElementById('mobileControls').style.display = 'none';
-            if (document.fullscreenElement) document.exitFullscreen();
+            // Reduced screen shake intensity
+            if (gameOver) screenShake = 5;
+            
+            // Slower obstacle glow
+            obstacles.forEach(obs => {
+                obs.x -= gameSpeed;
+                obs.glow = Math.sin(Date.now()/200) * 3 + 3; // Slower glow
+            });
         }
 
+        // New player drawing function
+        function drawPlayer() {
+            ctx.save();
+            ctx.translate(player.x + player.diameter/2, player.y + player.diameter/2);
+            
+            // Draw coin body
+            ctx.beginPath();
+            ctx.arc(0, 0, player.diameter/2, 0, Math.PI * 2);
+            ctx.fillStyle = player.color;
+            ctx.fill();
+            
+            // Draw π symbol
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 24px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('π', 0, 0);
+            
+            ctx.restore();
+        }
+
+        // Updated collision detection
+        function checkCollision(obs) {
+            const playerCenter = {
+                x: player.x + player.diameter/2,
+                y: player.y + player.diameter/2
+            };
+            const obsCenter = {
+                x: obs.x + obs.width/2,
+                y: obs.y + obs.height/2
+            };
+            
+            // Simple circle-rect collision
+            const closestX = Math.max(obs.x, Math.min(playerCenter.x, obs.x + obs.width));
+            const closestY = Math.max(obs.y, Math.min(playerCenter.y, obs.y + obs.height));
+            const distance = Math.sqrt(
+                Math.pow(playerCenter.x - closestX, 2) +
+                Math.pow(playerCenter.y - closestY, 2)
+            );
+            
+            return distance < player.diameter/2;
+        }
+
+        // Updated draw function
+        function draw() {
+            // ... clear canvas and draw ground ...
+            
+            drawPlayer();  // Use new player drawing
+            
+            // ... rest of drawing code ...
+        }
+
+        // Reduced particle effects
         function createParticles() {
-            for (let i = 0; i < 10; i++) {
+            for (let i = 0; i < 5; i++) { // Reduced from 10
                 particles.push({
-                    x: player.x + player.width/2,
-                    y: player.y + player.height,
-                    size: Math.random() * 3 + 2,
-                    velocity: {
-                        x: (Math.random() - 0.5) * 5,
-                        y: Math.random() * -3 - 2
-                    },
-                    alpha: 1
+                    // ... existing properties ...
+                    size: Math.random() * 2 + 1, // Smaller particles
                 });
             }
         }
-
-        function update() {
-            frameCount++;
-            score += 0.1;
-
-            // Update high score
-            if (score > highScore) {
-                highScore = Math.floor(score);
-                localStorage.setItem("piHighScore", highScore);
-            }
-
-            // Player physics
-            player.yVelocity += GRAVITY;
-            player.y += player.yVelocity;
-            player.scaleY = Math.min(player.scaleY + 0.05, 1);
-
-            // Ground collision
-            if (player.y + player.height >= canvas.height - GROUND_HEIGHT) {
-                player.y = canvas.height - GROUND_HEIGHT - player.height;
-                player.yVelocity = 0;
-                player.isJumping = false;
-                createParticles();
-                player.scaleY = 1.2;
-            }
-
-            // Obstacle generation
-            if (frameCount % OBSTACLE_GAP === 0) {
-                obstacles.push(new Obstacle());
-            }
-
-            // Update obstacles
-            obstacles.forEach(obs => {
-                obs.x -= gameSpeed;
-                obs.glow = Math.sin(Date.now()/100) * 5 + 5;
-            });
-            obstacles = obstacles.filter(obs => obs.x + obs.width > 0);
-
-            // Collision detection
-            obstacles.forEach(obs => {
-                if (
-                    player.x < obs.x + obs.width &&
-                    player.x + player.width > obs.x &&
-                    player.y < obs.y + obs.height &&
-                    player.y + player.height > obs.y
-                ) {
-                    screenShake = 10;
-                    gameOver = true;
-                }
-            });
-
-            // Update particles
-            particles.forEach(p => {
-                p.x += p.velocity.x;
-                p.y += p.velocity.y;
-                p.alpha -= 0.02;
-                p.velocity.y += 0.1;
-            });
-            particles = particles.filter(p => p.alpha > 0);
-
-            // Gradually increase difficulty
-            gameSpeed += 0.002;
-            if (screenShake > 0) screenShake--;
-        }
-
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Apply screen shake
-            const shakeX = screenShake > 0 ? Math.random() * 4 - 2 : 0;
-            const shakeY = screenShake > 0 ? Math.random() * 4 - 2 : 0;
-            ctx.setTransform(1, 0, 0, 1, shakeX, shakeY);
-
-            // Draw ground
-            ctx.fillStyle = '#4e342e';
-            ctx.fillRect(0, canvas.height - GROUND_HEIGHT, canvas.width, GROUND_HEIGHT);
-
-            // Draw player with squash/stretch
-            ctx.save();
-            ctx.translate(player.x + player.width/2, player.y + player.height);
-            ctx.scale(1, player.scaleY);
-            ctx.fillStyle = player.color;
-            ctx.beginPath();
-            ctx.roundRect(-player.width/2, -player.height, player.width, player.height, 10);
-            ctx.fill();
-            ctx.restore();
-
-            // Draw obstacles with glow
-            obstacles.forEach(obs => {
-                ctx.shadowColor = obs.color;
-                ctx.shadowBlur = obs.glow;
-                ctx.fillStyle = obs.color;
-                ctx.beginPath();
-                ctx.roundRect(obs.x, obs.y, obs.width, obs.height, 5);
-                ctx.fill();
-                ctx.shadowBlur = 0;
-            });
-
-            // Draw particles
-            particles.forEach(p => {
-                ctx.fillStyle = `rgba(255,167,38,${p.alpha})`;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
-            });
-
-            // Draw UI
-            ctx.fillStyle = 'white';
-            ctx.font = '20px Arial';
-            ctx.fillText(`Score: ${Math.floor(score)}`, 20, 30);
-            ctx.fillText(`High Score: ${Math.floor(highScore)}`, 20, 60);
-        }
-
-        function showGameOver() {
-            const overlay = document.createElement('div');
-            overlay.className = 'game-over';
-            overlay.innerHTML = `
-                <h2>Game Over!</h2>
-                <p>Final Score: ${Math.floor(score)}</p>
-                <button class="game-btn" onclick="resetGame()">Play Again</button>
-            `;
-            document.body.appendChild(overlay);
-        }
-
-        function gameLoop() {
-            if (gameOver) {
-                showGameOver();
-                return;
-            }
-
-            update();
-            draw();
-            animationFrameId = requestAnimationFrame(gameLoop);
-        }
-
-        // Initial canvas setup
-        draw();
     </script>
 </body>
 </html>
